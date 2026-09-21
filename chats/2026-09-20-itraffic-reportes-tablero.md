@@ -131,6 +131,34 @@ proveedores 199, clientes 299, caja 213, autorizaciones 35, auditoría 300.
 Las 8 combinaciones de modelo × vista (form/list/search/graph/pivot) se
 validaron con `get_views`.
 
+## Anexo: el acceso directo del escritorio no levantaba Odoo
+
+El `.lnk` del escritorio apunta bien a
+`D:\Repos\Odoo HR\2-Abrir Odoo RRHH.bat`, y el `.bat` tenía CRLF correcto.
+Eran tres bugs dentro del script, que solo se disparaban **con Docker
+Desktop apagado** (por eso no se habían visto):
+
+1. **Ruta de Docker Desktop hardcodeada** en `C:\Program Files\Docker\...`.
+   En esta PC está instalado a nivel usuario, en
+   `%LOCALAPPDATA%\Programs\DockerDesktop\`. Ahora se buscan las dos.
+2. **Etiquetas `:label` dentro de un bloque `if ( ... )`** de cmd, más
+   `%ProgramFiles%` expandido dentro de ese bloque. Si la ruta trae
+   paréntesis, el `)` corta el bloque antes de tiempo y cmd tira "No se
+   esperaba ... en este momento". Se aplanó el flujo con `goto`, sin
+   bloques que envuelvan etiquetas.
+3. **Esperaba HTTP 200 exacto** de `/web/login`, que en realidad contesta
+   **303** (redirección). Odoo levantaba bien y el script igual reportaba
+   "no respondió después de 3 minutos". Ahora usa `curl -L` y acepta
+   cualquier respuesta que no sea `000`.
+
+También se cambió `timeout /t` por `ping -n` en las esperas: `timeout`
+falla si el `.bat` corre con la entrada redirigida (otro script, Programador
+de tareas) y llena la pantalla de errores.
+
+Validado apagando Docker Desktop y corriendo el `.bat` de punta a punta:
+arranca Docker, levanta los contenedores, detecta Odoo y abre el navegador,
+con código de salida 0.
+
 ## Pendiente
 
 - Lo ya anotado en la memoria consolidada sigue igual (Ganancias 4ta,
