@@ -220,9 +220,54 @@ que use la pantalla de iTraffic confirme qué significan.**
 cero, y `0.0` (float) cuando sí. Al sumarlos: `unsupported operand type(s)
 for +: 'decimal.Decimal' and 'float'`. Ahora siempre castea a `float`.
 
+## Anexo 3: lookup de cliente y proveedor en vez de tipear el código
+
+Los SP filtran por código numérico (`@cod_agcia`, `@cod_oper`) y nadie se
+los acuerda de memoria. Se replicaron los dos catálogos del ERP en Odoo
+para poder elegirlos por nombre:
+
+| Modelo Odoo | Tabla origen | Filas |
+|---|---|---|
+| `itraffic.agencia` | `dbo.Agencia` (`Cod_agcia`, 82 columnas) | 4.723 |
+| `itraffic.operador` | `dbo.Operador` (`Cod_oper`, 57 columnas) | 4.789 |
+
+- `dbo.Operador` existe en **dos esquemas**: `dbo` (57 columnas, la buena) y
+  `dec` (8 columnas). Siempre calificar `dbo.`.
+- No hay un flag de activo/baja confiable: `Agencia.Estado_civ` es estado
+  civil, no una baja. `Operador` sí tiene `Vig_desde`/`Vig_hasta`. No se
+  filtra nada automáticamente, se traen todos.
+- `Operador.Cod_prov` se trae como columna informativa, pero **el filtro de
+  los SP es `Cod_oper`**, no `Cod_prov`.
+
+En `itraffic.query`, `cod_agcia` y `cod_oper` pasaron a ser campos
+`related` de sendos Many2one (`agencia_id`, `operador_id`), así que al SP
+sigue viajando el mismo entero de siempre. La búsqueda anda por nombre y
+por código gracias a un `codigo_txt` calculado (sobre un Integer no se
+puede hacer `ilike`), y el `display_name` muestra `[código] NOMBRE`.
+
+La sincronización se dispara desde Ajustes → iTraffic → "Sincronizar
+catálogos" (tarda ~6 s para los dos). No borra nada: si un código
+desaparece del ERP se deja, porque puede estar referenciado en consultas
+viejas.
+
+### Dos detalles que costaron
+
+- **Sincronización no idempotente**: el ERP devuelve `''` donde Odoo guarda
+  `False`, y `datetime` donde el campo es `Date`. Sin normalizar antes de
+  comparar, cada corrida "encontraba cambios" en miles de registros y los
+  reescribía. Se agregó `_normalizar()`.
+- **Caracteres de control en los nombres**: varios nombres arrastran `\x02`
+  y similares de cargas viejas, y se veían en el desplegable. Se filtran
+  los no imprimibles al traerlos.
+
+Verificado end-to-end: filtrando por `[10414] TELECOM ARGENTINA S.A` el
+reporte de proveedores devuelve 29 filas, todas de ese proveedor; filtrando
+reservas por `[440] DOMINOR` devuelven solo `cod_agcia = 440`.
+
 ## Pendiente
 
 - Confirmar con un usuario de iTraffic los casos "pagado de más".
+- Los catálogos se refrescan a mano; si molesta, se puede colgar de un cron.
 - Lo ya anotado en la memoria consolidada sigue igual (Ganancias 4ta,
   `iLSALDRVA_ListItraffic_Prevision`, Tarifario Hotel, Rentabilidad por
   File).

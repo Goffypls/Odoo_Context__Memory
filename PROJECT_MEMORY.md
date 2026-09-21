@@ -95,6 +95,16 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
 - "Vencido" solo tiene sentido si hay saldo pendiente. Un movimiento con
   saldo cero está saldado y uno con saldo negativo tiene saldo a favor —
   ninguno de los dos vence.
+- Los catálogos para filtrar son `dbo.Agencia` (`Cod_agcia`, clientes/
+  agencias) y `dbo.Operador` (`Cod_oper`, proveedores/operadores), ~4.700
+  filas cada uno, replicados en Odoo como `itraffic.agencia` e
+  `itraffic.operador`. `dbo.Operador` convive con un `dec.Operador`
+  distinto: siempre calificar el esquema. El filtro de los SP es
+  `Cod_oper`, no el `Cod_prov` que también trae esa tabla.
+- Al replicar datos del ERP hay que normalizar antes de comparar (`''` vs
+  `False`, `datetime` vs `Date`) o la sincronización reescribe todo en cada
+  corrida, y filtrar los caracteres no imprimibles que arrastran los
+  nombres viejos.
 - La pista de auditoría real es `dbo.AuditLog` (viva, ~2M de filas, la
   escribe el SP `Common_AuditLog`). `dbo.Logsistema` y
   `dbo.ReservaAuditoria` existen pero están vacías — son legado.
