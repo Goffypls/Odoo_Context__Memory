@@ -86,6 +86,15 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
 - La columna `Nombre` de `dbo.Informesweb` es el `@namereport` que el ERP
   le pasa al SP; la columna `Filtros` está vacía para los reportes de
   saldo, los filtros reales son los parámetros del SP.
+- Los SP de saldo devuelven **movimientos, no saldos neteados**. En
+  autorizaciones la autorización (`TipoComp='AUT'`) y su orden de pago
+  (`'O/P'`) vienen como dos filas que comparten **`NroComp`** (el número de
+  autorización). `Nro_comp` con guion bajo es otra cosa: el número propio
+  de cada documento. Sin ese cruce, una autorización pagada aparece con su
+  importe completo pendiente y vencida.
+- "Vencido" solo tiene sentido si hay saldo pendiente. Un movimiento con
+  saldo cero está saldado y uno con saldo negativo tiene saldo a favor —
+  ninguno de los dos vence.
 - La pista de auditoría real es `dbo.AuditLog` (viva, ~2M de filas, la
   escribe el SP `Common_AuditLog`). `dbo.Logsistema` y
   `dbo.ReservaAuditoria` existen pero están vacías — son legado.

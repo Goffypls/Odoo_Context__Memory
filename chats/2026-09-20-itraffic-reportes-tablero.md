@@ -159,8 +159,70 @@ Validado apagando Docker Desktop y corriendo el `.bat` de punta a punta:
 arranca Docker, levanta los contenedores, detecta Odoo y abre el navegador,
 con código de salida 0.
 
+## Anexo 2: "en autorizaciones aparece todo vencido aunque haya pagos"
+
+Reporte del usuario, y era real. Dos causas distintas.
+
+### Causa 1: faltaba cruzar la autorización con su orden de pago
+
+`iLSALDAUTORIZA_ListItraffic` devuelve **un movimiento por fila**, no el
+saldo neto:
+
+- `TipoComp = 'AUT'` → la autorización (`autorizado` > 0, `pagos` = 0)
+- `TipoComp = 'O/P'` → la orden de pago que la cancela (`autorizado` = 0,
+  `pagos` > 0, `saldo` negativo)
+
+**La clave del cruce es `NroComp`**, que es el número de autorización y lo
+comparten las dos filas. Ojo con no confundirlo: `Nro_comp` (con guion
+bajo) es el número propio de cada documento y es **distinto** en cada fila
+— cruzar por ese campo no une nada. El código viejo mapeaba
+`Nro_comp` primero y perdía el vínculo.
+
+Medido sobre agosto-septiembre 2026: 587 filas → 297 grupos, de los cuales
+**290 son pares AUT+O/P exactos** y 7 quedan con una sola fila. Solo 4
+órdenes de pago tocan más de una autorización, y aun así el SP las devuelve
+como filas separadas por autorización, así que netear por `NroComp` no
+mezcla importes de autorizaciones distintas.
+
+Ahora el reporte muestra **una línea por autorización** con `autorizado`,
+`pagos` y `saldo` neteados, más `nro_comp_pago`, `fecha_pago` y un
+`estado_pago` (pendiente / parcial / pagado / pagado de más / pago sin
+autorización). Queda un check "Ver movimientos sin cruzar" para volver a la
+vista cruda del ERP.
+
+### Causa 2: "vencido" no miraba el saldo
+
+`_compute_aging` marcaba vencido cualquier fila con fecha de vencimiento
+pasada, **sin importar si quedaba algo por pagar**. Corregido: si el saldo
+es cero → `saldado`; si es negativo → `a_favor`; solo se evalúa
+vencimiento cuando realmente hay saldo pendiente. Esto también arregla
+Proveedores y Clientes, donde las filas de pago (O/P, REC) aparecían todas
+en rojo.
+
+Resultado sobre la misma consulta de prueba: de 35 filas "todas vencidas" a
+18 autorizaciones, con **1 sola vencida de verdad**, 10 saldadas y 7
+marcadas para revisar.
+
+### Anomalía real de datos, no la tapamos
+
+Hay autorizaciones donde el pago supera lo autorizado, a veces por mucho
+(ej.: autorización 2841 = 1.557.956,16 pagada con 12.463.649,28; la 2850
+pagada exactamente al doble). Se verificó que **no** es un artefacto del
+cruce: el grupo tiene exactamente 2 filas, misma moneda y mismo tipo de
+cambio, y ninguna otra autorización comparte esa orden de pago. Es dato del
+ERP. Por eso esos casos se marcan como "Pagado de más (revisar)" y salen en
+rojo, en vez de disimularlos con un saldo neto raro. **Falta que alguien
+que use la pantalla de iTraffic confirme qué significan.**
+
+### Detalle técnico
+
+`_num()` devolvía el `Decimal` crudo del driver cuando el valor no era
+cero, y `0.0` (float) cuando sí. Al sumarlos: `unsupported operand type(s)
+for +: 'decimal.Decimal' and 'float'`. Ahora siempre castea a `float`.
+
 ## Pendiente
 
+- Confirmar con un usuario de iTraffic los casos "pagado de más".
 - Lo ya anotado en la memoria consolidada sigue igual (Ganancias 4ta,
   `iLSALDRVA_ListItraffic_Prevision`, Tarifario Hotel, Rentabilidad por
   File).
