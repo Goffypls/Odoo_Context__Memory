@@ -1,0 +1,145 @@
+# itraffic_connector: reportes y tablero alineados a iTraffic
+
+Fecha: 2026-09-20. Continúa
+[`2026-09-12-itraffic-connector-modulo.md`](./2026-09-12-itraffic-connector-modulo.md).
+
+## Objetivo del pedido
+
+Que las visualizaciones y reportes de Odoo sean **exactos a los de
+iTraffic** (mismos filtros, mismas columnas, mismos cortes), con un tablero
+de lectura rápida, para auditoría, caja, proveedores y clientes.
+
+## Hallazgo 1 (crítico): fechas vacías se mandaban como 1900-01-01
+
+Un campo `Date` vacío en Odoo vale `False`, no `None`. `pymssql` serializa
+`False` como `0`, que SQL Server interpreta como `1900-01-01` — o sea, un
+filtro de fecha activo que no matchea nada. Síntoma: reportes que devuelven
+**cero filas sin error**, o que devuelven muchas menos de las que
+corresponden.
+
+Se vio en vivo: Caja pasó de 8 a 213 filas al corregirlo; Proveedores y
+Autorizaciones pasaron de 0 filas a 199 y 35.
+
+**Regla**: todo campo de fecha/valor opcional de Odoo tiene que viajar al
+SP como `campo or None`, nunca directo. Está centralizado en
+`ItrafficQuery._common_params()`.
+
+## Hallazgo 2: `@tipocc` es el "modo de corte" del reporte
+
+Los SP de saldo aceptan `@tipocc`, que es el conmutador que usa cada
+variante del reporte en iTraffic (el mismo SP sirve a decenas de títulos
+distintos de `Informesweb`). Verificado empíricamente contra la base real
+(no deducido del código, que tiene miles de líneas de ramas):
+
+| tipocc | Qué devuelve | Con qué filtro de fecha funciona |
+|---|---|---|
+| `1` | Detalle por reserva: trae `rva`, vendedor, pax, estado de reserva, `nro_conf` | **Fecha de viaje** (`@fec_Saldesde/Salhasta`) |
+| `2` | Resumido por comprobante: una línea por comprobante, sin datos de reserva en Proveedores | **Fecha de comprobante** (`@fec_Compdesde/CompHasta`) |
+| `15` | Facturas con saldo pendiente — equivale a "Facturas a pagar" | Cualquiera de las dos |
+
+Lo importante: **los modos 1 y 2 son mutuamente excluyentes en el filtro de
+fecha**. Mandarle a tipocc=1 un rango de fecha de comprobante devuelve cero
+filas, y viceversa. Por eso en Odoo, cuando se elige "Detalle por reserva",
+el rango principal se manda al slot de fecha de viaje (y la pantalla lo
+avisa en amarillo).
+
+En `iLSALDAUTORIZA_ListItraffic` el `tipocc` **no cambia nada** y solo
+funciona el filtro por fecha de comprobante — por eso ahí queda fijo en 2 y
+no se le ofrece el selector al usuario.
+
+## Hallazgo 3: `Informesweb.Nombre` es el `@namereport`
+
+La columna `Nombre` del catálogo (`SALDOPROVEEDOR1`,
+`SALDOPROVEEDOR2_FACTURAS`, `SALDOAUTORIZADIARIO`, ...) es el valor que el
+ERP pasa como `@namereport` al SP, y el SP ramifica sobre él. La columna
+`Filtros` está vacía para estos reportes: los filtros reales son los
+parámetros del SP, no un metadato del catálogo.
+
+## Hallazgo 4: la auditoría real es `dbo.AuditLog`
+
+- `dbo.AuditLog`: **viva y con ~2 millones de filas**, escribiendo en el
+  momento. La alimenta el SP `Common_AuditLog`. Columnas: `UserId`,
+  `UserName`, `Action`, `ChangedOn`, `TableName`, `RowId`, `Module`,
+  `Page`, `Changes`, `RowIdParent`, `TableNameParent`.
+- `Changes` es JSON: `[{"F": campo, "O": valor viejo, "V": valor nuevo}]`.
+- Acciones observadas: `INSERT`, `UPDATE`, `DELETE`, `PRINT`.
+- `dbo.Logsistema` y `dbo.ReservaAuditoria` **existen pero están vacías** —
+  son legado, no usarlas.
+
+## Qué quedó construido
+
+### Tipo de reporte nuevo: Auditoría
+
+Modelo `itraffic.auditoria.line` sobre `dbo.AuditLog`. Filtros: fechas,
+usuario, acción, tabla (coincidencia parcial) e ID de registro (matchea
+tanto `RowId` como `RowIdParent`, para seguir un registro y sus hijos).
+El JSON de `Changes` se parsea a `campos_modificados` y `cantidad_campos`;
+si no parsea, se deja vacío en vez de romper la consulta entera.
+
+### Antigüedad de saldo (aging)
+
+`itraffic.aging.mixin`: `dias_para_vencer`, `estado_vencimiento`
+(vencido / vence en 7 días / sin urgencia / sin vencimiento) y
+`tramo_antiguedad` (a vencer, 1-30, 31-60, 61-90, +90). El modelo concreto
+declara en `_vencimiento_field` cuál de sus fechas es el vencimiento,
+porque cada SP lo llama distinto (`fec_vencop` en proveedores y
+autorizaciones, `Fec_Vence` en clientes). Lo usan Proveedores, Clientes y
+Autorizaciones, y es la columna del pivot por defecto.
+
+### Filtros ahora expuestos (los que ya tenía el SP y no se usaban)
+
+Fechas de viaje, de reserva, de vencimiento y de check-in/check-out como
+filtros **independientes** entre sí; código de vendedor; Nº de reserva;
+estado de reserva; forma de pago; cuenta contable; cuenta de caja; usuario;
+sucursal; y un tope de filas configurable por consulta.
+
+`@whereExpr` y `@orderExpr` siguen **sin alimentarse nunca** (SQL dinámico
+del SP). El comodín `LIKE` del filtro de tabla en auditoría se arma en
+Python y viaja como parámetro ligado, no concatenado.
+
+### Columnas
+
+Cada grilla trae ahora el juego completo de columnas que devuelve el SP
+(30 a 44 campos según el reporte), con `optional="hide"` en las
+secundarias: el usuario las prende desde el selector de columnas, igual que
+elige columnas en iTraffic, sin que la grilla por defecto sea ilegible.
+
+Nota: con `tipocc=2` varias columnas de nivel reserva (`rva`, vendedor,
+pax, estado) vienen **vacías desde el SP** — no es un error de mapeo. Para
+verlas hay que usar "Detalle por reserva".
+
+### Tablero
+
+- Banda de totales en el formulario (filas, saldo total, saldo vencido,
+  débitos, créditos), visible sin abrir el gráfico.
+- Totales por columna (`sum=`) en las grillas.
+- Vistas de búsqueda por modelo con filtros de un clic (Vencido, Vence en 7
+  días, Con saldo, Saldado, Pesos/Dólares, Ingresos/Egresos, Altas/Bajas/
+  Modificaciones) y agrupaciones listas (proveedor, cliente, moneda, tramo
+  de antigüedad, forma de pago, sucursal, vendedor, centro de costo,
+  usuario, mes de vencimiento/comprobante/viaje).
+- Gráficos por defecto orientados a decisión: saldo apilado por tramo de
+  antigüedad (proveedores y clientes), débito/crédito por día y forma de
+  pago (caja), proyección de vencimientos por semana (autorizaciones),
+  actividad por día y acción (auditoría).
+
+## Cómo se validó
+
+`odoo shell` contra la base real, rango corto (15 al 20 de septiembre de
+2026), `limit_rows=200/300`. Los cinco reportes devuelven datos:
+proveedores 199, clientes 299, caja 213, autorizaciones 35, auditoría 300.
+Las 8 combinaciones de modelo × vista (form/list/search/graph/pivot) se
+validaron con `get_views`.
+
+## Pendiente
+
+- Lo ya anotado en la memoria consolidada sigue igual (Ganancias 4ta,
+  `iLSALDRVA_ListItraffic_Prevision`, Tarifario Hotel, Rentabilidad por
+  File).
+- `@tiposaldo` se muestra como columna pero **no se ofrece como filtro**:
+  no se comprobó qué valores acepta como entrada y no se adivinó.
+- Los tipocc `3, 4, 5, 6, 7, 11, 14, 20, 90, 99` existen en el SP y no se
+  probaron — si hace falta otra variante de iTraffic, medir primero contra
+  la base antes de ofrecerla.
+- La verificación fue por `odoo shell` y `get_views`, no haciendo clic en
+  la interfaz. Vale una pasada manual por la pantalla.

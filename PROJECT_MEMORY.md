@@ -29,7 +29,7 @@ Tres módulos propios conviven en `custom-addons/`:
 |---|---|---|
 | `hr_argentina_core` | RR.HH. argentino: CCT, empleado, nómina propia, quejas/denuncias, chatbot+IA | [`2026-09-12-hr-argentina-core-modulo.md`](./chats/2026-09-12-hr-argentina-core-modulo.md) |
 | `maxirest_connector` | Conector de demo hacia MaxiRest (sin API real disponible) | [`2026-09-12-maxirest-connector-modulo.md`](./chats/2026-09-12-maxirest-connector-modulo.md) |
-| `itraffic_connector` | Consultas de solo lectura contra la base SQL Server real de iTraffic (reservas, proveedores, clientes, caja, autorizaciones, stock) | [`2026-09-12-itraffic-connector-modulo.md`](./chats/2026-09-12-itraffic-connector-modulo.md) |
+| `itraffic_connector` | Consultas de solo lectura contra la base SQL Server real de iTraffic (reservas, proveedores, clientes, caja, autorizaciones, auditoría, stock) | [`2026-09-12-itraffic-connector-modulo.md`](./chats/2026-09-12-itraffic-connector-modulo.md) + [`2026-09-20-itraffic-reportes-tablero.md`](./chats/2026-09-20-itraffic-reportes-tablero.md) |
 
 Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
 `hr_argentina_core` — ver
@@ -72,6 +72,23 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
   existe como stored procedure real usado por el ERP — la tabla
   `dbo.Informesweb` en la base de iTraffic es el catálogo oficial de
   reportes con su SP asociado.
+- **Un campo `Date` vacío de Odoo vale `False`, y `pymssql` lo manda como
+  `0` = `1900-01-01`**, o sea un filtro activo que no matchea nada. Todo
+  parámetro opcional tiene que viajar como `campo or None`. Síntoma típico:
+  un reporte que devuelve cero filas (o muchas menos de las esperadas) sin
+  ningún error.
+- Los SP de saldo aceptan `@tipocc`, el "modo de corte" con el que cada
+  variante de reporte de iTraffic llama al mismo SP. Verificado: `1` =
+  detalle por reserva y filtra por fecha de **viaje**; `2` = resumido por
+  comprobante y filtra por fecha de **comprobante**; `15` = facturas con
+  saldo pendiente. Los modos 1 y 2 son excluyentes en el filtro de fecha —
+  mandar el rango al slot equivocado devuelve cero filas.
+- La columna `Nombre` de `dbo.Informesweb` es el `@namereport` que el ERP
+  le pasa al SP; la columna `Filtros` está vacía para los reportes de
+  saldo, los filtros reales son los parámetros del SP.
+- La pista de auditoría real es `dbo.AuditLog` (viva, ~2M de filas, la
+  escribe el SP `Common_AuditLog`). `dbo.Logsistema` y
+  `dbo.ReservaAuditoria` existen pero están vacías — son legado.
 - Ante una consulta que tarda demasiado o parece colgada: revisar
   `sys.dm_exec_requests` en SQL Server (para ver si la base real está
   trabajando) y `pg_stat_activity` en Postgres (para encontrar una
@@ -92,6 +109,10 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
    `maxirest.connector.api` sin tocar el resto del módulo.
 5. Si se decide activar Inventario/Compras/Facturación nativos de Odoo,
    migrar los modelos propios de `maxirest_connector` a los nativos.
+6. `@tiposaldo` se muestra como columna en los reportes de saldo pero no se
+   ofrece como filtro: no se comprobó qué valores acepta como entrada.
+7. Los reportes nuevos se validaron por `odoo shell` y `get_views`, no
+   haciendo clic en la interfaz — falta una pasada manual por la pantalla.
 
 ## 5. Índice de fuentes
 
@@ -100,4 +121,5 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
 | hr_argentina_core (CCT, nómina, quejas, chatbot/IA, seguridad) | [`2026-09-12-hr-argentina-core-modulo.md`](./chats/2026-09-12-hr-argentina-core-modulo.md) |
 | maxirest_connector (sin API real, conector demo) | [`2026-09-12-maxirest-connector-modulo.md`](./chats/2026-09-12-maxirest-connector-modulo.md) |
 | itraffic_connector (SQL real, catálogo Informesweb, incidente de conexión) | [`2026-09-12-itraffic-connector-modulo.md`](./chats/2026-09-12-itraffic-connector-modulo.md) |
+| itraffic_connector (modos `@tipocc`, auditoría `AuditLog`, aging, tablero, bug de fechas `False`) | [`2026-09-20-itraffic-reportes-tablero.md`](./chats/2026-09-20-itraffic-reportes-tablero.md) |
 | Organigrama de demo "Cuenca del Plata" | [`2026-09-12-organigrama-cuenca-del-plata.md`](./chats/2026-09-12-organigrama-cuenca-del-plata.md) |
