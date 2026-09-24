@@ -128,9 +128,10 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
    `maxirest.connector.api` sin tocar el resto del módulo.
 5. Si se decide activar Inventario/Compras/Facturación nativos de Odoo,
    migrar los modelos propios de `maxirest_connector` a los nativos.
-6. **Poner `D:/Repos/Odoo HR` en un repo privado de git.** Hoy el proyecto
-   NO está versionado: el repo de GitHub es solo esta memoria, así que todo
-   el código de los tres módulos existe en un solo disco.
+6. **Crear el repo remoto y pushear `D:/Repos/Odoo HR`.** Ya quedó con
+   `git init` y el primer commit hecho en local (rama `main`, 75 archivos),
+   pero falta el remoto en GitHub. Hasta que se pushee, el código sigue
+   existiendo en un solo disco.
 7. `@tiposaldo` se muestra como columna en los reportes de saldo pero no se
    ofrece como filtro: no se comprobó qué valores acepta como entrada.
 8. Los reportes nuevos se validaron por `odoo shell` y `get_views`, no
