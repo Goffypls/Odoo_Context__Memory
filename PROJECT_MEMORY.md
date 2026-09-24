@@ -128,9 +128,12 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
    `maxirest.connector.api` sin tocar el resto del módulo.
 5. Si se decide activar Inventario/Compras/Facturación nativos de Odoo,
    migrar los modelos propios de `maxirest_connector` a los nativos.
-6. `@tiposaldo` se muestra como columna en los reportes de saldo pero no se
+6. **Poner `D:/Repos/Odoo HR` en un repo privado de git.** Hoy el proyecto
+   NO está versionado: el repo de GitHub es solo esta memoria, así que todo
+   el código de los tres módulos existe en un solo disco.
+7. `@tiposaldo` se muestra como columna en los reportes de saldo pero no se
    ofrece como filtro: no se comprobó qué valores acepta como entrada.
-7. Los reportes nuevos se validaron por `odoo shell` y `get_views`, no
+8. Los reportes nuevos se validaron por `odoo shell` y `get_views`, no
    haciendo clic en la interfaz — falta una pasada manual por la pantalla.
 
 ## 5. Índice de fuentes
@@ -142,3 +145,4 @@ Además hay datos de demo de la empresa "Cuenca del Plata" cargados en
 | itraffic_connector (SQL real, catálogo Informesweb, incidente de conexión) | [`2026-09-12-itraffic-connector-modulo.md`](./chats/2026-09-12-itraffic-connector-modulo.md) |
 | itraffic_connector (modos `@tipocc`, auditoría `AuditLog`, aging, tablero, bug de fechas `False`) | [`2026-09-20-itraffic-reportes-tablero.md`](./chats/2026-09-20-itraffic-reportes-tablero.md) |
 | Organigrama de demo "Cuenca del Plata" | [`2026-09-12-organigrama-cuenca-del-plata.md`](./chats/2026-09-12-organigrama-cuenca-del-plata.md) |
+| Migrar el proyecto a otra PC (qué copiar, volúmenes Docker, credenciales en el dump) | [`2026-09-24-migrar-el-proyecto-a-otra-pc.md`](./chats/2026-09-24-migrar-el-proyecto-a-otra-pc.md) |
